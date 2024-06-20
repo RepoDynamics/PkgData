@@ -222,7 +222,7 @@ def get_distribution_name_from_caller(stack_up: int = 0) -> str:
     pkgdata.exception.PkgDataMultipleDistributionsError
         If the caller's top-level import package corresponds to multiple distribution packages.
     """
-    package_name = get_package_name_from_caller(stack_up=stack_up)
+    package_name = get_package_name_from_caller(top_level=True, stack_up=stack_up)
     dist_name = get_distribution_name_from_package_name(package_name)
     return dist_name
 
