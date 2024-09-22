@@ -11,6 +11,11 @@ from pathlib import Path as _Path
 from pkgdata import exception
 
 
+def is_standard_library(module_name: str) -> bool:
+    """Check whether a module is part of the current Python version's standard library."""
+    return module_name in _sys.stdlib_module_names
+
+
 def get_all_distribution_names() -> tuple[str, ...]:
     """Get the names of all installed distribution packages.
 
