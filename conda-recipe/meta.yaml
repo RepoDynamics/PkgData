@@ -1,0 +1,28 @@
+package:
+  name: pkgdata
+  version: 0.0.0.dev5
+
+source:
+  git_url: ../
+
+build:
+  noarch: python
+  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+  number: 0
+
+requirements:
+  host:
+    - python >=3.10
+    - setuptools >=72.1.0
+    - versioningit >=3.1.2
+    - pip
+  run:
+    - python >=3.10
+
+test:
+  imports:
+    - pkgdata
+  commands:
+    - pip check
+  requires:
+    - pip
