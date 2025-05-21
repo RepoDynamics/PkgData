@@ -181,7 +181,7 @@ def get_caller_module_name(stack_up: int = 0) -> str:
     return filepath_to_module_name(caller_filepath)
 
 
-def get_caller_name(stack_up: int = 0) -> str:
+def get_caller_name(stack_up: int = 0, lineno: bool = False) -> str:
     """Get the fully qualified name of this function's caller,
     or a caller higher up in the call stack.
 
@@ -198,6 +198,9 @@ def get_caller_name(stack_up: int = 0) -> str:
     stack_up
         Number of frames to go up in the call stack to determine the caller's name.
         The default value of 0 returns the name of this function's direct caller.
+    lineno
+        Add the line number of the caller to the end of the name
+        after a colon (":").
 
     Raises
     ------
@@ -208,29 +211,30 @@ def get_caller_name(stack_up: int = 0) -> str:
     frameinfo = get_caller_frame(stack_up=stack_up)
     frame: FrameType = frameinfo.frame
     code = frame.f_code
+    parts = [module_name]
     if hasattr(code, "co_qualname"):
         # Python 3.11+
         # https://docs.python.org/3/reference/datamodel.html#codeobject.co_qualname
         # fully qualified function name as a string
         # e.g., "my_function", "MyClass.my_method", "MyClass.InnerClass.my_method"
         qualname = code.co_qualname
-        if qualname == "<module>":
-            # The caller is in the module's global scope
-            return module_name
-        return f"{module_name}.{qualname}"
+        if qualname != "<module>":
+            # The caller is not in the module's global scope
+            parts.append(qualname)
     # For Python 3.10 and earlier, we need to get the fully qualified name manually
-    if qualname := frame.f_locals.get("__qualname__"):
+    elif qualname := frame.f_locals.get("__qualname__"):
         # If the function is not in the module's global scope,
         # it has a __qualname__ attribute equivalent to `code.co_qualname`.
         # Here, it cannot be "<module>", since then `f_locals` would be empty.
-        return f"{module_name}.{qualname}"
+        parts.append(qualname)
     # The caller is either directly in the module's global scope or in a module-level function.
-    func_name = frameinfo.function
-    if func_name == "<module>":
-        # The caller is in the module's global scope
-        return module_name
-    # The caller is in a module-level function
-    return f"{module_name}.{func_name}"
+    elif (func_name := frameinfo.function) != "<module>":
+        # The caller is in a module-level function
+        parts.append(func_name)
+    fullname = ".".join(parts)
+    if lineno:
+        return f"{fullname}:{frameinfo.lineno}"
+    return fullname
 
 
 def get_distribution_name_from_package_name(package_name: str) -> str:
