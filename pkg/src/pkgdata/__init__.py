@@ -1,7 +1,10 @@
 """PkgData"""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import inspect as _inspect
-from types import ModuleType as _ModuleType
 import importlib.util as _importlib_util
 import importlib.resources as _importlib_resources
 import importlib.metadata as _importlib_metadata
@@ -9,6 +12,9 @@ import sys as _sys
 from pathlib import Path as _Path
 
 from pkgdata import exception
+
+if TYPE_CHECKING:
+    from types import FrameType, ModuleType
 
 
 def is_standard_library(module_name: str) -> bool:
@@ -101,6 +107,130 @@ def get_caller_frame(stack_up: int = 0) -> _inspect.FrameInfo:
     except IndexError:
         raise exception.PkgDataStackTooShallowError(stack=external_stack, stack_up=stack_up)
     return caller_frame
+
+
+def get_caller_module(stack_up: int = 0) -> ModuleType | None:
+    """Get the module of this function's caller,
+    or a caller higher up in the call stack.
+
+    Parameters
+    ----------
+    stack_up
+        Number of frames to go up in the call stack to determine the caller's module.
+        The default value of 0 returns the module of this function's direct caller.
+
+    Raises
+    ------
+    pkgdata.exception.PkgDataStackTooShallowError
+        If the call stack is too shallow for the input `stack_up` argument.
+    """
+    caller_frame = get_caller_frame(stack_up=stack_up)
+    return _inspect.getmodule(caller_frame.frame)
+
+
+def get_caller_module_name(stack_up: int = 0) -> str:
+    """Get the name of this function's caller's module,
+    or a caller higher up in the call stack.
+
+    This function first gets the module of the caller's frame
+    using the `pkgdata.get_caller_module` function.
+    If the module is available and its name is not "__main__",
+    the module name is returned.
+    Otherwise, the function gets the file path of the caller's frame
+    and converts it to a fully qualified module name,
+    by traversing the parent directories until a non-package (no `__init__.py`) is found.
+    If the file path does not exist (e.g., it is "<string>" for when eval() or exec() is used),
+    the function returns the file path as is.
+
+    Parameters
+    ----------
+    stack_up
+        Number of frames to go up in the call stack to determine the caller's module name.
+        The default value of 0 returns the module name of this function's direct caller.
+
+    Returns
+    -------
+    Name of the caller's module.
+
+    Raises
+    ------
+    pkgdata.exception.PkgDataStackTooShallowError
+        If the call stack is too shallow for the input `stack_up` argument.
+    """
+    def filepath_to_module_name(filepath: _Path) -> str:
+        """Get the fully qualified module name for a Python file.
+
+        Traverse parent directories until a non-package (no `__init__.py`) is found.
+        Assumes the input path is absolute and points to a `.py` file.
+        """
+        parts = [filepath.stem]
+        current_dir = filepath.parent
+        while (current_dir / "__init__.py").exists() and (current_dirname := current_dir.name):
+            parts.insert(0, current_dirname)
+            current_dir = current_dir.parent
+        return ".".join(parts)
+
+    caller_module = get_caller_module(stack_up=stack_up)
+    if caller_module and (module_name := caller_module.__name__) != "__main__":
+        return module_name
+    caller_frame = get_caller_frame(stack_up=stack_up)
+    caller_filepath = _Path(caller_frame.filename)
+    if not caller_filepath.exists():
+        # e.g., "<string>" for when eval() or exec() is used to run the code
+        return caller_frame.filename
+    return filepath_to_module_name(caller_filepath)
+
+
+def get_caller_name(stack_up: int = 0) -> str:
+    """Get the fully qualified name of this function's caller,
+    or a caller higher up in the call stack.
+
+    This function first gets the module name of the caller's frame
+    using the `pkgdata.get_caller_module_name` function.
+    If the caller is in the module's global scope,
+    the module name is returned.
+    Otherwise, the fully qualified function name of the caller's frame
+    within the module is added to the module name,
+    and the result is returned.
+
+    Parameters
+    ----------
+    stack_up
+        Number of frames to go up in the call stack to determine the caller's name.
+        The default value of 0 returns the name of this function's direct caller.
+
+    Raises
+    ------
+    pkgdata.exception.PkgDataStackTooShallowError
+        If the call stack is too shallow for the input `stack_up` argument.
+    """
+    module_name = get_caller_module_name(stack_up=stack_up)
+    frameinfo = get_caller_frame(stack_up=stack_up)
+    frame: FrameType = frameinfo.frame
+    code = frame.f_code
+    if hasattr(code, "co_qualname"):
+        # Python 3.11+
+        # https://docs.python.org/3/reference/datamodel.html#codeobject.co_qualname
+        # fully qualified function name as a string
+        # e.g., "my_function", "MyClass.my_method", "MyClass.InnerClass.my_method"
+        qualname = code.co_qualname
+        if qualname == "<module>":
+            # The caller is in the module's global scope
+            return module_name
+        return f"{module_name}.{qualname}"
+    # For Python 3.10 and earlier, we need to get the fully qualified name manually
+    if qualname := frame.f_locals.get("__qualname__"):
+        # If the function is not in the module's global scope,
+        # it has a __qualname__ attribute equivalent to `code.co_qualname`.
+        # Here, it cannot be "<module>", since then `f_locals` would be empty.
+        return f"{module_name}.{qualname}"
+    # The caller is either directly in the module's global scope or in a module-level function.
+    func_name = frameinfo.function
+    if func_name == "<module>":
+        # The caller is in the module's global scope
+        return module_name
+    # The caller is in a module-level function
+    return f"{module_name}.{func_name}"
 
 
 def get_distribution_name_from_package_name(package_name: str) -> str:
@@ -374,7 +504,7 @@ def get_version_from_caller(stack_up: int = 0) -> str:
     return version
 
 
-def import_module_from_path(path: str | _Path, name: str | None = None) -> _ModuleType:
+def import_module_from_path(path: str | _Path, name: str | None = None) -> ModuleType:
     """Import a Python module from a local path.
 
     Parameters

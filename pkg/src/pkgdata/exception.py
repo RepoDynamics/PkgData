@@ -1,8 +1,12 @@
 """Exceptions raised by PkgData."""
 
+from __future__ import annotations
 
-from pathlib import Path as _Path
+from typing import TYPE_CHECKING
 import inspect as _inspect
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class PkgDataException(Exception):
@@ -63,7 +67,7 @@ class PkgDataModuleNotFoundError(PkgDataException):
     module_path : pathlib.Path
         Path to the module as provided by the user.
     """
-    def __init__(self, path: _Path):
+    def __init__(self, path: Path):
         self.module_path = path
         message = f"Could not find a module at path '{path}'."
         super().__init__(message)
@@ -135,7 +139,7 @@ class PkgDataMultipleDistributionsError(PkgDataException):
 
 class PkgDataModuleImportError(PkgDataException):
     """Exception raised when a module cannot be imported."""
-    def __init__(self, name: str, path: _Path):
+    def __init__(self, name: str, path: Path):
         self.module_name = name
         self.module_path = path
         message = f"Failed to import module '{name}' from path '{path}'."
